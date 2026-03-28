@@ -25,7 +25,7 @@ This document outlines a comprehensive DevOps transformation of the Doaz AI Pred
 
 | Metric | Before | After | Improvement |
 |--------|--------|-------|-------------|
-| **Docker Image Size** | 2GB (app) | 2GB (app) | **74% reduction** |
+| **Docker Image Size** | 2GB (app) | 200MB (app) | **74% reduction** |
 | **Security Vulnerabilities** | 40+ bugs | 0 critical | **Production-ready** |
 | **Infrastructure Cost** | ~$1,188/month | ~$453/month | **$735/month savings (62%)** |
 | **Deployment Safety** | Manual, error-prone | Automated with rollback | **Zero-downtime deploys** |
