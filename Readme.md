@@ -887,7 +887,6 @@ alembic upgrade head
   run: alembic upgrade head
 ```
 
-**Effort:** 2 days
 **Impact:** Safe, versioned database changes
 
 ---
@@ -966,7 +965,6 @@ Savings: 70% on spot nodes
 - Cost: $220/month → $130/month (-$90/month)
 - Handles interruptions with graceful shutdown
 
-**Effort:** 1 week
 **Risk:** Spot interruptions (mitigated by PDBs)
 
 ---
@@ -1021,7 +1019,6 @@ Cost Savings: ~$100/month (downsize during off-peak)
 - Lifecycle policy: S3 → Glacier after 90 days
 ```
 
-**Effort:** 1 day/month (ongoing)
 **Impact:** Confidence in disaster recovery
 
 ---
@@ -1075,7 +1072,6 @@ Already implemented with Trivy ✅
   run: dependency-check --project doaz --scan .
 ```
 
-**Effort:** 2 weeks
 **Impact:** Enhanced security posture
 
 ---
