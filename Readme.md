@@ -439,7 +439,6 @@ helm install prometheus prometheus-community/kube-prometheus-stack \
 **Results:**
 - ✅ Proactive alerting (before users notice)
 - ✅ MTTR reduced from hours to <15 minutes
-- ✅ Junior engineers can respond to incidents (runbooks)
 - ✅ Cost: **$3/month** (EBS storage only)
 
 ---
