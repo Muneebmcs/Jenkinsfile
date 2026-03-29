@@ -1,9 +1,5 @@
 # SafetyAIgent - Production Architecture Design
 
-**Version**: 2.0
-**Last Updated**: 2026-03-29
-**Authors**: DevOps & Platform Team
-**Status**: Production-Ready ✅
 
 ---
 
@@ -24,7 +20,7 @@
 
 ### Project Overview
 
-SafetyAIgent is an AI-powered safety compliance checker for construction sites. It analyzes uploaded images to detect safety violations such as missing personal protective equipment (PPE), unsafe equipment usage, and hazardous site conditions.
+SafetyAIgent is an AI-powered safety compliance checker for construction sites.
 
 ### Key Requirements & Achievements
 
@@ -36,18 +32,6 @@ SafetyAIgent is an AI-powered safety compliance checker for construction sites. 
 | **Budget** | $2,500/month | $903/month | ✅ 64% under budget |
 | **Deployment Time** | <30 min | 12 min (Blue-Green) | ✅ Faster |
 
-### Technology Stack
-
-```
-Frontend:        React (separate repo)
-Backend API:     Python 3.11 + FastAPI
-ML Framework:    TensorFlow 2.x
-Infrastructure:  AWS (EKS, RDS, ElastiCache, S3)
-Orchestration:   Kubernetes 1.28 + Helm
-CI/CD:           GitHub Actions (Blue-Green deployment)
-Monitoring:      Prometheus + Grafana + AlertManager
-IaC:             Terraform 1.6
-```
 
 ---
 
@@ -189,7 +173,7 @@ graph TB
 | Component | Technology | Purpose | HA Strategy | Cost/Month |
 |-----------|-----------|---------|-------------|------------|
 | **ALB** | AWS Application Load Balancer | TLS termination, routing | Multi-AZ | $29 |
-| **EKS Control Plane** | Kubernetes 1.28 | Container orchestration | AWS managed Multi-AZ | $73 |
+| **EKS Control Plane** | Kubernetes 1.34 | Container orchestration | AWS managed Multi-AZ | $73 |
 | **EKS Worker Nodes** | EC2 t3.medium × 3 | Pod hosting | Auto Scaling Group 2 AZs | $90 |
 | **Application Pods** | Python 3.11 FastAPI | ML inference API | HPA 3-15 replicas | - |
 | **RDS PostgreSQL** | PostgreSQL 15 db.t3.medium | Primary database | Multi-AZ automatic failover | $73 |
@@ -229,7 +213,7 @@ graph TB
 
 **Rationale**:
 - **Future-proofing**: ML models may evolve to need GPU inference (EKS supports p3 instances)
-- **Portability**: Can migrate to GKE/AKE or on-prem Kubernetes if needed
+- **Portability**: Can migrate to GKE/AKS or on-prem Kubernetes if needed
 - **Tooling**: Helm charts, External Secrets Operator, Prometheus all Kubernetes-native
 - **Blue-Green**: Service selector switching is built-in and instant
 - **Cost is acceptable**: $73/month for flexibility and future capabilities
@@ -402,29 +386,15 @@ Rollback: <10 seconds (switch service selector back to Blue)
 | Component | Multi-AZ? | Reason | Cost Impact |
 |-----------|-----------|--------|-------------|
 | **RDS** | ✅ Yes | Data loss unacceptable | +$73 (standby) |
-| **ElastiCache** | ❌ No | Cache can rebuild | $0 |
 | **EKS Nodes** | ✅ Yes | Availability SLA | +$30 (extra node) |
 | **ALB** | ✅ Yes | Single point of failure | $0 (free) |
 | **NAT Gateway** | ✅ Yes | Outbound connectivity | +$32 (second NAT) |
 
 **Total Multi-AZ Cost**: +$135/month
 
-**Availability Gain**:
-```
-Single-AZ: 99.5% = 43.8 hours downtime/year
-Multi-AZ:  99.9% = 8.76 hours downtime/year
-
-Downtime reduction: 35 hours/year
-
-If downtime costs $100/hour (lost revenue):
-Value: $3,500/year
-Multi-AZ cost: $1,620/year
-ROI: 116%
-```
 
 **Decision**: **Multi-AZ for RDS, EKS, ALB, NAT**
 
-**Not Multi-AZ**: Redis (cache can be rebuilt, acceptable 2-min outage)
 
 ---
 
@@ -775,7 +745,7 @@ If budget constraints arise in the future:
 | Connection | Protocol | Certificate Authority | Cipher Suite |
 |------------|----------|----------------------|--------------|
 | **User → ALB** | TLS 1.2+ | AWS ACM | ECDHE-RSA-AES128-GCM-SHA256 |
-| **ALB → Pods** | HTTP | N/A (internal VPC) | - |
+| **ALB → Pods** | HTTPS | AWS ACM | ECDHE-RSA-AES128-GCM-SHA256  |
 | **Pods → RDS** | TLS 1.2 | RDS CA 2024 | TLS_RSA_WITH_AES_256_GCM_SHA384 |
 | **Pods → Redis** | TLS 1.2 | ElastiCache CA | TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 |
 | **Pods → S3** | HTTPS (TLS 1.2) | Amazon Root CA | AWS Signature V4 |
@@ -975,7 +945,7 @@ IAM Policies:
 | **safety-aigent-app-role** | Application access | S3, Secrets Manager, CloudWatch | Application pods |
 | **external-secrets-role** | Sync secrets | Secrets Manager Read (all in region) | External Secrets Operator |
 | **aws-lb-controller-role** | Manage ALB | ALB Create/Update/Delete | AWS Load Balancer Controller |
-| **cluster-autoscaler-role** | Scale nodes | EC2 Describe, ASG Update | Cluster Autoscaler |
+| **Karpenter-role** | Scale nodes | EC2 Describe, ASG Update | Karpenter |
 
 ---
 
@@ -1205,7 +1175,7 @@ Database queries/sec: 20 → 200 queries/s
 ```
 T+0s:    Massive traffic spike, CPU → 100%
 T+30s:   HPA maxes out at 15 pods (configured limit)
-T+60s:   Cluster Autoscaler detects unschedulable pods
+T+60s:   Karpenter detects unschedulable pods
 T+3min:  CA adds 5 new nodes (total 8 nodes)
 T+5min:  15 pods running, CPU stabilizes at 80%
 T+10min: Still overloaded (100 req/s / 15 pods = 6.6 req/pod)
@@ -1564,7 +1534,7 @@ RTO: <2 minutes
 RPO: 0 (pods replicated across nodes)
 ```
 
-**Cluster Autoscaler**: Adds replacement node within 3 minutes
+**Karpenter**: Adds replacement node within 3 minutes
 
 **Manual cleanup** (optional):
 ```bash
@@ -1590,7 +1560,7 @@ T+0s:    AZ1 failure detected by AWS health checks
 T+0s:    ALB stops routing to AZ1 targets (instant)
 T+30s:   RDS automatic failover to standby in AZ2
 T+60s:   Kubernetes marks AZ1 nodes as NotReady
-T+90s:   Cluster Autoscaler adds nodes in AZ2
+T+90s:   Karpenter adds nodes in AZ2
 T+2min:  Pods rescheduled in AZ2
 T+3min:  Full capacity restored in AZ2
 
@@ -1826,8 +1796,8 @@ Duration: 4 hours (afternoon, off-peak)
 
 **EKS Upgrade Cadence**: Every 3 months (aligned with EKS support policy)
 
-**Current**: EKS 1.28
-**Next**: EKS 1.29 (March 2026)
+**Current**: EKS 1.34
+**Next**: EKS 1.35
 **Support Window**: 14 months from release
 
 **Upgrade Strategy**:
@@ -1844,7 +1814,7 @@ Week 4: Monitor for regressions
 # 1. Upgrade control plane (zero downtime)
 aws eks update-cluster-version \
   --name safety-aigent-prod-eks \
-  --kubernetes-version 1.29
+  --kubernetes-version 1.35
 
 # Control plane upgrades automatically (15-20 min)
 # No impact to running pods
@@ -1856,12 +1826,12 @@ kubectl set image deployment/coredns \
 
 kubectl set image daemonset/kube-proxy \
   -n kube-system \
-  kube-proxy=602401143452.dkr.ecr.ap-northeast-2.amazonaws.com/eks/kube-proxy:v1.29.0-eksbuild.1
+  kube-proxy=602401143452.dkr.ecr.ap-northeast-2.amazonaws.com/eks/kube-proxy:v1.34.0-eksbuild.1
 
 kubectl apply -f https://raw.githubusercontent.com/aws/amazon-vpc-cni-k8s/v1.16.0/config/master/aws-k8s-cni.yaml
 
 # 3. Update worker node launch template
-# - New AMI: EKS-optimized Amazon Linux 2 (1.29)
+# - New AMI: EKS-optimized Amazon Linux 2 (1.34)
 # - Update Auto Scaling Group
 
 # 4. Rolling update nodes (one at a time)
@@ -2200,210 +2170,4 @@ Example:
 ```
 
 ---
-
-### Knowledge Management
-
-**Documentation Structure**:
-```
-docs/
-├── architecture/
-│   ├── DESIGN.md (this document)
-│   ├── architecture-diagram.mmd (Mermaid source)
-│   └── data-flow.md
-├── runbooks/
-│   ├── high-error-rate.md
-│   ├── database-failover.md
-│   ├── eks-upgrade.md
-│   └── ... (10 total)
-├── procedures/
-│   ├── incident-response.md
-│   ├── on-call-rotation.md
-│   ├── certificate-renewal.md
-│   └── backup-restore.md
-└── onboarding/
-    ├── new-engineer.md
-    ├── sre-onboarding.md
-    └── troubleshooting-guide.md
-```
-
-**Documentation SLA**:
-- Runbooks updated within 1 week of incident (post-mortem action item)
-- Architecture docs updated within 1 month of major changes
-- Onboarding docs reviewed quarterly (by new hires)
-
-**Ownership**:
-- Architecture docs: Platform Team Lead
-- Runbooks: On-call rotation (each engineer owns 1-2 runbooks)
-- Procedures: SRE Team
-- Onboarding: Hiring Manager
-
----
-
-### On-Call Rotation
-
-**Rotation Schedule**:
-```
-Week 1: Engineer A (primary), Engineer B (backup)
-Week 2: Engineer B (primary), Engineer C (backup)
-Week 3: Engineer C (primary), Engineer D (backup)
-Week 4: Engineer D (primary), Engineer A (backup)
-...
-```
-
-**On-Call Compensation**:
-- Stipend: $500/week for primary on-call
-- Incident pay: $100 per P0 incident resolved outside business hours
-- Time-off: 1 day off after handling P0 incident on weekend
-
-**On-Call Checklist** (Monday handoff):
-```markdown
-# On-Call Week Checklist
-
-## Monday (Handoff)
-- [ ] Test PagerDuty alerts (send test page to yourself)
-- [ ] Review Grafana dashboards (all green?)
-- [ ] Check AWS Health Dashboard (any planned maintenance?)
-- [ ] Review scheduled deployments this week (GitHub Projects)
-- [ ] Read incident summary from last week (Slack #incidents)
-
-## Daily
-- [ ] Morning: Review CloudWatch alarms (9 AM)
-- [ ] Morning: Check #alerts Slack channel for overnight issues
-- [ ] Evening: Review cost dashboard (any spikes?)
-
-## Friday (Handoff)
-- [ ] Post summary to #on-call (incidents, alerts, actions taken)
-- [ ] Document any issues encountered (update runbooks if needed)
-- [ ] 30-min sync with next on-call engineer (context transfer)
-- [ ] Update PagerDuty schedule (confirm next engineer ready)
-```
-
-**On-Call Training**:
-- Shadow 2 weeks before first on-call shift
-- Complete incident simulation drill
-- Review all 10 runbooks
-- 1-hour Q&A with experienced on-call engineer
-
----
-
-## Appendix
-
-### A. Network CIDR Allocation
-
-```
-VPC: 10.0.0.0/16 (65,536 IPs)
-
-┌─────────────────────────────────────────────────────┐
-│  AZ1 (ap-northeast-2a)                              │
-├─────────────────────────────────────────────────────┤
-│  Public Subnet:   10.0.1.0/24 (256 IPs)             │
-│    - ALB (2 IPs)                                    │
-│    - NAT Gateway (1 IP)                             │
-│    - Reserved (253 IPs)                             │
-│                                                     │
-│  Private Subnet:  10.0.11.0/24 (256 IPs)            │
-│    - EKS Pods (up to 200 IPs)                       │
-│    - Reserved (56 IPs)                              │
-│                                                     │
-│  Data Subnet:     10.0.21.0/24 (256 IPs)            │
-│    - RDS Primary (1 IP)                             │
-│    - ElastiCache Redis (1 IP)                       │
-│    - Reserved (254 IPs)                             │
-└─────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────┐
-│  AZ2 (ap-northeast-2c)                              │
-├─────────────────────────────────────────────────────┤
-│  Public Subnet:   10.0.2.0/24 (256 IPs)             │
-│  Private Subnet:  10.0.12.0/24 (256 IPs)            │
-│  Data Subnet:     10.0.22.0/24 (256 IPs)            │
-└─────────────────────────────────────────────────────┘
-
-Reserved for future expansion:
-  10.0.31.0/24 - 10.0.254.0/24 (224 subnets available)
-```
-
----
-
-### B. Port Matrix
-
-| Source | Destination | Protocol | Port | Purpose | Security Group |
-|--------|-------------|----------|------|---------|----------------|
-| Internet | ALB | TCP | 443 | HTTPS | sg-alb-prod |
-| Internet | ALB | TCP | 80 | HTTP (redirect) | sg-alb-prod |
-| ALB | EKS Pods | TCP | 8000 | Application | sg-eks-pods |
-| EKS Pods | RDS | TCP | 5432 | PostgreSQL | sg-rds-db |
-| EKS Pods | Redis | TCP | 6379 | ElastiCache | sg-redis |
-| EKS Pods | S3 | TCP | 443 | HTTPS API | N/A (VPC endpoint) |
-| EKS Control Plane | EKS Nodes | TCP | 443 | kubelet | sg-eks-nodes |
-| EKS Nodes | EKS Control Plane | TCP | 443 | API server | AWS managed |
-| Prometheus | EKS Pods | TCP | 8000 | Metrics scrape | sg-monitoring |
-| Grafana | Prometheus | TCP | 9090 | Query | sg-monitoring |
-
----
-
-### C. Terraform Module Structure
-
-```
-terraform/
-├── modules/
-│   ├── vpc/              # VPC, subnets, route tables, NAT
-│   ├── eks/              # EKS cluster, node groups, OIDC
-│   ├── rds/              # PostgreSQL database, Multi-AZ
-│   ├── elasticache/      # Redis cache
-│   ├── s3/               # S3 buckets, lifecycle, versioning
-│   ├── security/         # Security groups
-│   ├── iam/              # IAM roles (non-IRSA)
-│   ├── irsa/             # IRSA roles for pods
-│   ├── secrets/          # AWS Secrets Manager
-│   └── monitoring/       # CloudWatch, SNS
-└── environments/
-    ├── dev/              # Development (single AZ, small instances)
-    ├── staging/          # Staging (single AZ, medium instances)
-    └── prod/             # Production (Multi-AZ, full sizing)
-```
-
----
-
-### D. Kubernetes Namespace Inventory
-
-| Namespace | Purpose | Pods | Network Isolation |
-|-----------|---------|------|-------------------|
-| **safety-aigent** | Application | 3-15 (HPA) | NetworkPolicy enabled |
-| **monitoring** | Prometheus, Grafana, AlertManager | 5 | NetworkPolicy enabled |
-| **kube-system** | Kubernetes system components | 15 | AWS managed |
-| **ingress-nginx** | Ingress controller (if used) | 2 | AWS managed |
-| **external-secrets** | External Secrets Operator | 1 | NetworkPolicy enabled |
-
----
-
-### E. Glossary
-
-- **ALB**: Application Load Balancer (AWS Layer 7 load balancer)
-- **AZ**: Availability Zone (isolated data center within region)
-- **HPA**: Horizontal Pod Autoscaler (auto-scales pod replicas)
-- **IRSA**: IAM Roles for Service Accounts (pod-level AWS access without credentials)
-- **KMS**: Key Management Service (encryption key management)
-- **LCU**: Load Balancer Capacity Unit (ALB billing metric)
-- **Multi-AZ**: Deployment across multiple Availability Zones for HA
-- **OIDC**: OpenID Connect (authentication protocol for IRSA)
-- **PDB**: Pod Disruption Budget (ensures minimum pod availability during disruptions)
-- **PITR**: Point-in-Time Recovery (restore database to any second)
-- **RPO**: Recovery Point Objective (how much data can be lost)
-- **RTO**: Recovery Time Objective (how fast to recover)
-- **TLS**: Transport Layer Security (encryption in transit)
-- **VPC**: Virtual Private Cloud (isolated network in AWS)
-- **WAL**: Write-Ahead Log (PostgreSQL transaction log for PITR)
-
----
-
-**Document Version**: 2.0
-**Last Reviewed**: 2026-03-29
-**Next Review**: 2026-06-29
-**Owner**: Platform Team
-**Approval**: CTO Signature Required
-
----
-
 **END OF DESIGN.md**
-
